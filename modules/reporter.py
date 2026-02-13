@@ -6,8 +6,11 @@ from .calculator import Calculator
 import os
 
 class Reporter:
-    def __init__(self, db_path="data/betting_log.db"):
-        self.calculator = Calculator(db_path)
+    def __init__(self, calculator_or_path="data/betting_log.db"):
+        if isinstance(calculator_or_path, str):
+            self.calculator = Calculator(calculator_or_path)
+        else:
+            self.calculator = calculator_or_path
 
     def generate_monthly_chart(self, year: int, month: int, output_path: str = "data/chart.png") -> str:
         data = self.calculator.get_all_bets_for_month(year, month)
