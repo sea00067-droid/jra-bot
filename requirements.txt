@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+line-bot-sdk
+opencv-python
+pyzbar
+requests
+beautifulsoup4
+matplotlib
+pandas
+python-multipart
+pillow-heif
+pillow
+numpy
+sqlalchemy
+psycopg2-binary
