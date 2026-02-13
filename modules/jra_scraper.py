@@ -10,7 +10,7 @@ class RaceResult:
     combinations: List[str] # [1], [1, 2]
     payouts: List[int] # [250], [110, 140]
 
-class NetkeibaScraper:
+class JRAScraper:
     def __init__(self):
         self.headers = {
              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
