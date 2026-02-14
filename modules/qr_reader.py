@@ -11,6 +11,7 @@ except Exception as e:
 from PIL import Image
 from pillow_heif import register_heif_opener
 import numpy as np
+import cv2
 
 # DEBUG: Image loading check
 def check_image_stat(path):
@@ -125,42 +126,84 @@ class QRReader:
         Reads an image (supports JPG, PNG, HEIC) and decodes JRA QR codes.
         Handles multiple tickets in one image by clustering QR codes.
         """
+        # Try decoding with pyzbar first (Grayscale often fixes orientation issues)
+        decoded_items = []
+        
+        # Helper class to shim Rect interface
+        from collections import namedtuple
+        Rect = namedtuple('Rect', ['left', 'top', 'width', 'height'])
+
         try:
             print(f"DEBUG: decode_ticket called for {image_path}")
             check_image_stat(image_path)
             
             register_heif_opener()
             pil_img = Image.open(image_path)
+            # Convert to grayscale to avoid pyzbar orientation bug
+            if pil_img.mode != 'L':
+                pil_img = pil_img.convert('L')
             
-            if decode is None:
-                print("DEBUG: decode function is None (pyzbar missing)")
-                return []
-                
-            decoded_objects = decode(pil_img)
-            print(f"DEBUG: decode returned {len(decoded_objects)} objects")
+            if decode:
+                try:
+                    decoded_objects = decode(pil_img)
+                    print(f"DEBUG: pyzbar decode returned {len(decoded_objects)} objects")
+                    for obj in decoded_objects:
+                        decoded_items.append({
+                            'data': obj.data.decode("utf-8"),
+                            'rect': obj.rect
+                        })
+                except Exception as e:
+                    print(f"WARNING: pyzbar failed ({e}), falling back to OpenCV")
+                    decoded_items = [] # Reset to try OpenCV
+            else:
+                print("DEBUG: pyzbar not loaded, trying OpenCV")
             
-            if not decoded_objects:
-                print("DEBUG: No QR codes found in image.")
-                return []
+            # Fallback to OpenCV if pyzbar failed or found nothing
+            if not decoded_items:
+                try:
+                    # Convert PIL 'L' to numpy array (cv2 compatible)
+                    open_cv_image = np.array(pil_img)
+                    qcd = cv2.QRCodeDetector()
+                    retval, decoded_info, points, _ = qcd.detectAndDecodeMulti(open_cv_image)
+                    
+                    if retval:
+                        print(f"DEBUG: OpenCV found QR codes")
+                        # points shape is (n, 4, 2)
+                        for i, s in enumerate(decoded_info):
+                            if not s: continue # Skip empty strings
+                            pts = points[i]
+                            # Calculate bounding box from points
+                            min_x = int(np.min(pts[:, 0]))
+                            min_y = int(np.min(pts[:, 1]))
+                            max_x = int(np.max(pts[:, 0]))
+                            max_y = int(np.max(pts[:, 1]))
+                            w = max_x - min_x
+                            h = max_y - min_y
+                            
+                            decoded_items.append({
+                                'data': s,
+                                'rect': Rect(min_x, min_y, w, h)
+                            })
+                    else:
+                        print("DEBUG: OpenCV found no QR codes")
+                        
+                except Exception as cv_e:
+                    print(f"ERROR: OpenCV decode failed: {cv_e}")
 
-            # 1. Extract data and bounding boxes
-            qr_items = []
-            for obj in decoded_objects:
-                qr_items.append({
-                    'data': obj.data.decode("utf-8"),
-                    'rect': obj.rect
-                })
+            if not decoded_items:
+                print("DEBUG: No QR codes found by any method.")
+                return []
 
             # 2. Cluster logic (Sort Top-Down then Left-Right)
-            qr_items.sort(key=lambda x: x['rect'].top)
+            decoded_items.sort(key=lambda x: x['rect'].top)
             
             rows = []
             current_row = []
-            if qr_items:
-                current_row.append(qr_items[0])
-                for i in range(1, len(qr_items)):
+            if decoded_items:
+                current_row.append(decoded_items[0])
+                for i in range(1, len(decoded_items)):
                     prev = current_row[-1]
-                    curr = qr_items[i]
+                    curr = decoded_items[i]
                     # Threshold: Center Y difference < 50% of avg height
                     prev_cy = prev['rect'].top + prev['rect'].height/2
                     curr_cy = curr['rect'].top + curr['rect'].height/2
