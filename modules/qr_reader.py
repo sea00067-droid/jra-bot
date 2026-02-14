@@ -4,12 +4,24 @@ from typing import List, Optional
 
 try:
     from pyzbar.pyzbar import decode
-except ImportError:
+    print("DEBUG: pyzbar imported successfully")
+except Exception as e:
     decode = None
-    print("Warning: pyzbar not found. QR decoding will not work, but JRAParser is available.")
+    print(f"ERROR: pyzbar import failed: {e}")
 from PIL import Image
 from pillow_heif import register_heif_opener
 import numpy as np
+
+# DEBUG: Image loading check
+def check_image_stat(path):
+    try:
+        register_heif_opener()
+        img = Image.open(path)
+        print(f"DEBUG: Image opened - Size: {img.size}, Mode: {img.mode}")
+        return True
+    except Exception as e:
+        print(f"DEBUG: Image open failed: {e}")
+        return False
 
 @dataclass
 class TicketData:
@@ -114,11 +126,21 @@ class QRReader:
         Handles multiple tickets in one image by clustering QR codes.
         """
         try:
+            print(f"DEBUG: decode_ticket called for {image_path}")
+            check_image_stat(image_path)
+            
             register_heif_opener()
             pil_img = Image.open(image_path)
+            
+            if decode is None:
+                print("DEBUG: decode function is None (pyzbar missing)")
+                return []
+                
             decoded_objects = decode(pil_img)
+            print(f"DEBUG: decode returned {len(decoded_objects)} objects")
             
             if not decoded_objects:
+                print("DEBUG: No QR codes found in image.")
                 return []
 
             # 1. Extract data and bounding boxes
