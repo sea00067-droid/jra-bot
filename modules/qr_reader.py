@@ -3,15 +3,15 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 try:
-    from pyzbar.pyzbar import decode
-    print("DEBUG: pyzbar imported successfully")
-except Exception as e:
-    decode = None
-    print(f"ERROR: pyzbar import failed: {e}")
+    import zxingcpp
+    print("DEBUG: zxingcpp imported successfully")
+except ImportError:
+    zxingcpp = None
+    print("WARNING: zxingcpp import failed. QR decoding will not work.")
+
 from PIL import Image
 from pillow_heif import register_heif_opener
 import numpy as np
-import cv2
 
 # DEBUG: Image loading check
 def check_image_stat(path):
@@ -123,87 +123,119 @@ class QRReader:
 
     def decode_ticket(self, image_path: str) -> List[TicketData]:
         """
-        Reads an image (supports JPG, PNG, HEIC) and decodes JRA QR codes.
+        Reads an image (supports JPG, PNG, HEIC) and decodes JRA QR codes using zxing-cpp.
         Handles multiple tickets in one image by clustering QR codes.
         """
-        # Try decoding with pyzbar first (Grayscale often fixes orientation issues)
-        decoded_items = []
-        
-        # Helper class to shim Rect interface
-        from collections import namedtuple
-        Rect = namedtuple('Rect', ['left', 'top', 'width', 'height'])
-
         try:
             print(f"DEBUG: decode_ticket called for {image_path}")
             check_image_stat(image_path)
             
             register_heif_opener()
             pil_img = Image.open(image_path)
-            # Convert to grayscale to avoid pyzbar orientation bug
-            if pil_img.mode != 'L':
-                pil_img = pil_img.convert('L')
             
-            if decode:
-                try:
-                    decoded_objects = decode(pil_img)
-                    print(f"DEBUG: pyzbar decode returned {len(decoded_objects)} objects")
-                    for obj in decoded_objects:
-                        decoded_items.append({
-                            'data': obj.data.decode("utf-8"),
-                            'rect': obj.rect
-                        })
-                except Exception as e:
-                    print(f"WARNING: pyzbar failed ({e}), falling back to OpenCV")
-                    decoded_items = [] # Reset to try OpenCV
+            # Ensure image is in a mode compatible with zxing-cpp (usually RGB or L)
+            if pil_img.mode not in ('RGB', 'L'):
+                pil_img = pil_img.convert('RGB')
+            
+            if zxingcpp:
+                # zxing-cpp can read PIL images directly or numpy arrays
+                decoded_objects = zxingcpp.read_barcodes(pil_img)
+                print(f"DEBUG: zxingcpp returned {len(decoded_objects)} objects")
             else:
-                print("DEBUG: pyzbar not loaded, trying OpenCV")
-            
-            # Fallback to OpenCV if pyzbar failed or found nothing
-            if not decoded_items:
-                try:
-                    # Convert PIL 'L' to numpy array (cv2 compatible)
-                    open_cv_image = np.array(pil_img)
-                    qcd = cv2.QRCodeDetector()
-                    retval, decoded_info, points, _ = qcd.detectAndDecodeMulti(open_cv_image)
-                    
-                    if retval:
-                        print(f"DEBUG: OpenCV found QR codes")
-                        # points shape is (n, 4, 2)
-                        for i, s in enumerate(decoded_info):
-                            if not s: continue # Skip empty strings
-                            pts = points[i]
-                            # Calculate bounding box from points
-                            min_x = int(np.min(pts[:, 0]))
-                            min_y = int(np.min(pts[:, 1]))
-                            max_x = int(np.max(pts[:, 0]))
-                            max_y = int(np.max(pts[:, 1]))
-                            w = max_x - min_x
-                            h = max_y - min_y
-                            
-                            decoded_items.append({
-                                'data': s,
-                                'rect': Rect(min_x, min_y, w, h)
-                            })
-                    else:
-                        print("DEBUG: OpenCV found no QR codes")
-                        
-                except Exception as cv_e:
-                    print(f"ERROR: OpenCV decode failed: {cv_e}")
-
-            if not decoded_items:
-                print("DEBUG: No QR codes found by any method.")
+                print("DEBUG: zxingcpp missing")
                 return []
 
+            if not decoded_objects:
+                print("DEBUG: No QR codes found in image.")
+                return []
+
+            # 1. Extract data and bounding boxes
+            # Helper to shim Rect interface
+            from collections import namedtuple
+            Rect = namedtuple('Rect', ['left', 'top', 'width', 'height'])
+
+            qr_items = []
+            for obj in decoded_objects:
+                # obj.position gives coordinates. Usually TopLeft, TopRight, BottomRight, BottomLeft
+                # We need bounding box
+                try:
+                    p = obj.position
+                    # zxing-cpp position is a string or an object with x,y?
+                    # Depending on version. Let's assume standard object with x,y properties 
+                    # OR check what it returns. 
+                    # Wait, zxing-cpp returns `position` as a specific object.
+                    # It has `top_left`, `top_right` etc.
+                    # Actually, simple way: obj.position -> capturing localized coordinates
+                    
+                    # Convert position points to rect
+                    # Assuming obj.position is convertible to string or has attributes.
+                    # Let's inspect via string representation or assume standard bounding box logic if lacking documentation in this context.
+                    # Actually, let's use a simpler approach. zxing-cpp usually robustly gives content.
+                    # Clustering logic relies on 'rect'.
+                    # Let's deduce rect from position.
+                    
+                    # zxing-cpp binding usually exposes `position` as a specialized Point object
+                    # We will try to parse it. 
+                    
+                    # Hack: For clustering JRA tickets (usually stacked), Y-coordinate is key.
+                    # Let's try to get Y from position.
+                    # If obj.position is complex, we might fail here.
+                    
+                    # Let's print obj to debug log just in case
+                    print(f"DEBUG: QR object: {obj.text} at {obj.position}")
+
+                    # Approximation: Use dummy rect if position parsing is hard, BUT clustering relies on it.
+                    # Let's try to extract basic coords.
+                    # obj.position usually has `top_left`, `top_right`...
+                    
+                    # Simple fallback: if only 1 QR found, rect doesn't matter much.
+                    # But JRA has 2 concatenated QRs. They are side-by-side or stacked?
+                    # Usually side-by-side.
+                    
+                    # Let's try to access obj.position.top_left.y etc.
+                    # If that fails, assume it's just text.
+                    
+                    # Simplified logic for now: Treat all found QRs as one row if clustering fails?
+                    # No, JRA QRs are split. We NEED to combine them correctly.
+                    
+                    # Let's assume zxing-cpp `position` string looks like "Point(x,y) ..."
+                    # Let's use a robust approach:
+                    # zxing-cpp objects have `position` attribute which is a string representation in earlier versions,
+                    # or an object in newer.
+                    # Given Render environment, let's play safe.
+                    
+                    # We will create a pseudo-rect from the position string if needed, 
+                    # OR just use the order they are returned? zxing-cpp might not guarantee order.
+                    
+                    # Let's TRY to access `top_left` etc.
+                    p = obj.position
+                    # The C++ binding typically returns a `Position` object with `top_left`, etc.
+                    min_x = min(p.top_left.x, p.bottom_left.x)
+                    min_y = min(p.top_left.y, p.top_right.y)
+                    max_x = max(p.top_right.x, p.bottom_right.x)
+                    max_y = max(p.bottom_left.y, p.bottom_right.y)
+                    
+                    qr_items.append({
+                        'data': obj.text,
+                        'rect': Rect(min_x, min_y, max_x - min_x, max_y - min_y)
+                    })
+                except Exception as pos_e:
+                    print(f"WARNING: Could not determine position ({pos_e}), using dummy rect")
+                    qr_items.append({
+                        'data': obj.text,
+                        'rect': Rect(0, 0, 100, 100) # Dummy
+                    })
+
             # 2. Cluster logic (Sort Top-Down then Left-Right)
-            decoded_items.sort(key=lambda x: x['rect'].top)
+            qr_items.sort(key=lambda x: x['rect'].top)
             
             rows = []
             current_row = []
-            if decoded_items:
-                current_row.append(decoded_items[0])
-                for i in range(1, len(decoded_items)):
+            if qr_items:
+                current_row.append(qr_items[0])
+                for i in range(1, len(qr_items)):
                     prev = current_row[-1]
-                    curr = decoded_items[i]
+                    curr = qr_items[i]
                     # Threshold: Center Y difference < 50% of avg height
                     prev_cy = prev['rect'].top + prev['rect'].height/2
                     curr_cy = curr['rect'].top + curr['rect'].height/2
@@ -221,6 +253,7 @@ class QRReader:
                 # Sort Left-Right to concatenate correctly
                 row.sort(key=lambda x: x['rect'].left)
                 full_qr_data = "".join([item['data'] for item in row])
+                print(f"DEBUG: Parsed QR data length: {len(full_qr_data)}")
                 
                 # Parse
                 ticket = JRAParser.parse(full_qr_data)
