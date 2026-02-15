@@ -51,8 +51,20 @@ function switchTab(mode) {
 }
 
 function startScan() {
-    html5QrCode = new Html5Qrcode("reader");
-    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    // High performance config for dense QR codes
+    html5QrCode = new Html5Qrcode("reader", {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false
+    });
+
+    // Increased QR Box size for better capture of wide JRA QRs
+    // Increased FPS for faster detection
+    const config = {
+        fps: 15,
+        qrbox: { width: 300, height: 300 },
+        aspectRatio: 1.0,
+        disableFlip: false
+    };
 
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
         .catch(err => {
@@ -69,8 +81,8 @@ function onScanSuccess(decodedText, decodedResult) {
     scannedCodes.push(decodedText);
     document.getElementById("scan-status").innerText = `${scannedCodes.length}個目のQRを読み取りました`;
 
+    // Auto-stop after 2 scans (assumption for JRA)
     if (scannedCodes.length >= 2) {
-        // Stop scanning
         html5QrCode.stop().then(() => {
             document.getElementById("reader").style.display = "none";
             document.getElementById("scan-status").innerText = "読み取り完了！解析中...";
@@ -81,7 +93,7 @@ function onScanSuccess(decodedText, decodedResult) {
 
 async function processScannedData() {
     let combined = scannedCodes.join("");
-    document.getElementById("parsed-data").innerText = "解析中...";
+    document.getElementById("parsed-data").innerText = "解析中... (" + combined.length + "桁)";
 
     try {
         const response = await fetch('/api/parse_qr', {
