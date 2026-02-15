@@ -2,7 +2,7 @@ fastapi
 uvicorn
 line-bot-sdk
 opencv-python
-pyzbar
+zxing-cpp
 requests
 beautifulsoup4
 matplotlib
@@ -13,3 +13,4 @@ pillow
 numpy
 sqlalchemy
 psycopg2-binary
+aiofiles
