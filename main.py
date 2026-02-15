@@ -1,6 +1,7 @@
 import os
 import sys
-from fastapi import FastAPI, Request, HTTPException
+import aiofiles
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from linebot import LineBotApi, WebhookHandler
@@ -98,6 +99,40 @@ async def register_bets(request: BetRequest):
         return {"status": "success", "count": registered_count}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/scan_image")
+async def scan_image(file: UploadFile = File(...)):
+    try:
+        # Save uploaded file to temp
+        temp_filename = f"data/temp/{file.filename}"
+        async with aiofiles.open(temp_filename, 'wb') as out_file:
+            content = await file.read()
+            await out_file.write(content)
+            
+        # Decode
+        tickets = qr_reader.decode_ticket(temp_filename)
+        
+        if not tickets:
+             return {"status": "failed", "message": "QRコードが見つかりませんでした"}
+             
+        # Return first ticket for now (UI only handles one form)
+        # TODO: Handle multiple tickets in UI
+        ticket = tickets[0]
+        
+        return {
+            "status": "success",
+            "data": {
+                "place_code": ticket.place_code,
+                "race_num": ticket.race_num,
+                "bet_type": ticket.bet_type,
+                "amount": ticket.amount,
+                "buy_details": ticket.buy_details
+            }
+        }
+        
+    except Exception as e:
+        print(f"Scan error: {e}")
+        raise HTTPException(status_code=500, detail="画像の解析に失敗しました")
 
 @app.get("/api/balance/{year}/{month}")
 async def get_monthly_balance(year: int, month: int):

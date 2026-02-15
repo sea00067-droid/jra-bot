@@ -19,24 +19,22 @@
             <a href="balance.html" style="color:var(--primary-color); text-decoration:none;">📊 収支を見る &gt;</a>
         </div>
 
-        <div class="tabs">
-            <button class="tab-btn active" id="tab-scan">📷 スキャン</button>
-            <button class="tab-btn" id="tab-manual">✍️ 手入力</button>
-        </div>
-
-        <!-- Scanner View -->
+        <!-- Scan View -->
         <div id="scan-view">
-            <div id="reader" width="600px"></div>
-            <p id="scan-status">カメラを起動してください...</p>
-            <button id="start-scan-btn" class="btn btn-primary">カメラ起動</button>
+            <p style="font-size:14px; text-align:center;">LINEのカメラでQRコードを読み取ります</p>
+            <button id="start-native-scan-btn" class="btn btn-primary" style="font-size:18px;">📷 LINEでスキャンする</button>
             <div id="scan-result" class="card" style="display:none;">
                 <h3>読み取り結果</h3>
                 <div id="parsed-data"></div>
-                <button id="submit-scan-btn" class="btn btn-primary">登録する</button>
+                <!-- <button id="submit-scan-btn" class="btn btn-primary">登録する</button> added dynamically -->
+            </div>
+
+            <div style="margin-top:20px; text-align:center;">
+                <button id="tab-manual" class="btn btn-secondary">✍️ 手入力はこちら</button>
             </div>
         </div>
 
-        <!-- Manual Entry View -->
+        <!-- Manual View -->
         <div id="manual-view" style="display:none;">
             <div class="card">
                 <h3>手入力フォーム</h3>

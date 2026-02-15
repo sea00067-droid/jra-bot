@@ -150,107 +150,76 @@ class QRReader:
                 return []
 
             # 1. Extract data and bounding boxes
-            # Helper to shim Rect interface
             from collections import namedtuple
             Rect = namedtuple('Rect', ['left', 'top', 'width', 'height'])
 
             qr_items = []
+            
             for obj in decoded_objects:
-                # obj.position gives coordinates. Usually TopLeft, TopRight, BottomRight, BottomLeft
-                # We need bounding box
                 try:
+                    # zxing-cpp obj has .text (string) and .position (object with point attributes)
                     p = obj.position
-                    # zxing-cpp position is a string or an object with x,y?
-                    # Depending on version. Let's assume standard object with x,y properties 
-                    # OR check what it returns. 
-                    # Wait, zxing-cpp returns `position` as a specific object.
-                    # It has `top_left`, `top_right` etc.
-                    # Actually, simple way: obj.position -> capturing localized coordinates
                     
-                    # Convert position points to rect
-                    # Assuming obj.position is convertible to string or has attributes.
-                    # Let's inspect via string representation or assume standard bounding box logic if lacking documentation in this context.
-                    # Actually, let's use a simpler approach. zxing-cpp usually robustly gives content.
-                    # Clustering logic relies on 'rect'.
-                    # Let's deduce rect from position.
-                    
-                    # zxing-cpp binding usually exposes `position` as a specialized Point object
-                    # We will try to parse it. 
-                    
-                    # Hack: For clustering JRA tickets (usually stacked), Y-coordinate is key.
-                    # Let's try to get Y from position.
-                    # If obj.position is complex, we might fail here.
-                    
-                    # Let's print obj to debug log just in case
-                    print(f"DEBUG: QR object: {obj.text} at {obj.position}")
+                    # Robust way: Try attributes first, fallback to dummy
+                    try:
+                        # Standard zxing-cpp point attributes
+                        min_x = min(p.top_left.x, p.bottom_left.x)
+                        min_y = min(p.top_left.y, p.top_right.y)
+                        max_x = max(p.top_right.x, p.bottom_right.x)
+                        max_y = max(p.bottom_left.y, p.bottom_right.y)
+                        
+                        width = max_x - min_x
+                        height = max_y - min_y
+                    except AttributeError:
+                        # Fallback for weird versions or if position is not point object
+                        # If we assume JRA QRs are split horizontally side-by-side or vertically stacked.
+                        # Since we can't get precise position, let's assume they are returned in reading order?
+                        # zxing-cpp usually returns them in found order.
+                        # Let's give dummy increasing Y to keep order if sort is used.
+                        current_len = len(qr_items)
+                        min_x, min_y, width, height = 0, current_len * 100, 100, 100
+                        
+                    qr_items.append({
+                        'data': obj.text,
+                        'rect': Rect(min_x, min_y, width, height)
+                    })
+                except Exception as e:
+                    print(f"WARNING: Error processing QR object: {e}")
+                    continue
 
-                    # Approximation: Use dummy rect if position parsing is hard, BUT clustering relies on it.
-                    # Let's try to extract basic coords.
-                    # obj.position usually has `top_left`, `top_right`...
-                    
-                    # Simple fallback: if only 1 QR found, rect doesn't matter much.
-                    # But JRA has 2 concatenated QRs. They are side-by-side or stacked?
-                    # Usually side-by-side.
-                    
-                    # Let's try to access obj.position.top_left.y etc.
-                    # If that fails, assume it's just text.
-                    
-                    # Simplified logic for now: Treat all found QRs as one row if clustering fails?
-                    # No, JRA QRs are split. We NEED to combine them correctly.
-                    
-                    # Let's assume zxing-cpp `position` string looks like "Point(x,y) ..."
-                    # Let's use a robust approach:
-                    # zxing-cpp objects have `position` attribute which is a string representation in earlier versions,
-                    # or an object in newer.
-                    # Given Render environment, let's play safe.
-                    
-                    # We will create a pseudo-rect from the position string if needed, 
-                    # OR just use the order they are returned? zxing-cpp might not guarantee order.
-                    
-                    # Let's TRY to access `top_left` etc.
-                    p = obj.position
-                    # The C++ binding typically returns a `Position` object with `top_left`, etc.
-                    min_x = min(p.top_left.x, p.bottom_left.x)
-                    min_y = min(p.top_left.y, p.top_right.y)
-                    max_x = max(p.top_right.x, p.bottom_right.x)
-                    max_y = max(p.bottom_left.y, p.bottom_right.y)
-                    
-                    qr_items.append({
-                        'data': obj.text,
-                        'rect': Rect(min_x, min_y, max_x - min_x, max_y - min_y)
-                    })
-                except Exception as pos_e:
-                    print(f"WARNING: Could not determine position ({pos_e}), using dummy rect")
-                    qr_items.append({
-                        'data': obj.text,
-                        'rect': Rect(0, 0, 100, 100) # Dummy
-                    })
+            if not qr_items:
+                return []
 
             # 2. Cluster logic (Sort Top-Down then Left-Right)
+            # JRA tickets usually have 2 QRs side-by-side.
+            # If side-by-side, they will have similar top/height.
+            
             qr_items.sort(key=lambda x: x['rect'].top)
             
             rows = []
-            current_row = []
             if qr_items:
-                current_row.append(qr_items[0])
+                current_row = [qr_items[0]]
                 for i in range(1, len(qr_items)):
                     prev = current_row[-1]
                     curr = qr_items[i]
-                    # Threshold: Center Y difference < 50% of avg height
+                    
+                    # Vertical separation threshold
                     prev_cy = prev['rect'].top + prev['rect'].height/2
                     curr_cy = curr['rect'].top + curr['rect'].height/2
                     h_avg = (prev['rect'].height + curr['rect'].height) / 2
                     
                     if abs(prev_cy - curr_cy) < h_avg * 0.5:
+                        # Same row
                         current_row.append(curr)
                     else:
+                        # New row
                         rows.append(current_row)
                         current_row = [curr]
                 rows.append(current_row)
 
             tickets = []
             for row in rows:
-                # Sort Left-Right to concatenate correctly
+                # Sort Left-Right
                 row.sort(key=lambda x: x['rect'].left)
                 full_qr_data = "".join([item['data'] for item in row])
                 print(f"DEBUG: Parsed QR data length: {len(full_qr_data)}")

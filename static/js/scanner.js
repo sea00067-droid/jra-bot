@@ -1,11 +1,12 @@
 const LIFF_ID = "2009134533-h8bU1BkZ";
-let html5QrCode;
 let scannedCodes = []; // To store 1st and 2nd QR parts
 
 document.addEventListener("DOMContentLoaded", function () {
-    // Tab switching
-    document.getElementById("tab-scan").addEventListener("click", () => switchTab("scan"));
-    document.getElementById("tab-manual").addEventListener("click", () => switchTab("manual"));
+    // Manual tab toggle
+    document.getElementById("tab-manual").addEventListener("click", () => {
+        document.getElementById("scan-view").style.display = "none";
+        document.getElementById("manual-view").style.display = "block";
+    });
 
     // Initialize LIFF
     liff.init({ liffId: LIFF_ID })
@@ -17,11 +18,11 @@ document.addEventListener("DOMContentLoaded", function () {
         })
         .catch((err) => {
             console.error(err);
-            document.getElementById("log").innerText = "LIFF Init Error: " + err;
+            alert("LIFF Init Failed: " + err);
         });
 
-    // Camera Start Button
-    document.getElementById("start-scan-btn").addEventListener("click", startScan);
+    // Native Scan Button
+    document.getElementById("start-native-scan-btn").addEventListener("click", startNativeScan);
 
     // Initial race num population
     const raceSelect = document.getElementById("race-num");
@@ -33,61 +34,55 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 });
 
-function switchTab(mode) {
-    if (mode === "scan") {
-        document.getElementById("scan-view").style.display = "block";
-        document.getElementById("manual-view").style.display = "none";
-        document.getElementById("tab-scan").classList.add("active");
-        document.getElementById("tab-manual").classList.remove("active");
-    } else {
-        document.getElementById("scan-view").style.display = "none";
-        document.getElementById("manual-view").style.display = "block";
-        document.getElementById("tab-scan").classList.remove("active");
-        document.getElementById("tab-manual").classList.add("active");
-        if (html5QrCode) {
-            html5QrCode.stop().catch(err => console.error(err));
-        }
+function startNativeScan() {
+    if (!liff.isInClient()) {
+        alert("この機能はLINEアプリ内でのみ使用できます。");
+        return;
     }
-}
 
-function startScan() {
-    // High performance config for dense QR codes
-    html5QrCode = new Html5Qrcode("reader", {
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        verbose: false
+    // Check if scanCode is available (it might be deprecated/removed in some envs)
+    if (!liff.scanCode && !liff.scanCodeV2) {
+        alert("この環境ではQRスキャン機能が利用できません。");
+        return;
+    }
+
+    // Try V2 first, then V1
+    const scanFunc = liff.scanCodeV2 ? liff.scanCodeV2 : liff.scanCode;
+
+    scanFunc().then(result => {
+        // result.value contains the string
+        const decodedText = result.value;
+        if (!decodedText) return;
+
+        handleScannedText(decodedText);
+    }).catch(err => {
+        console.error(err);
+        alert("スキャンエラー: " + err);
     });
-
-    // Increased QR Box size for better capture of wide JRA QRs
-    // Increased FPS for faster detection
-    const config = {
-        fps: 15,
-        qrbox: { width: 300, height: 300 },
-        aspectRatio: 1.0,
-        disableFlip: false
-    };
-
-    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-        .catch(err => {
-            document.getElementById("log").innerText = "Camera Start Error: " + err;
-        });
-
-    document.getElementById("start-scan-btn").style.display = "none";
-    document.getElementById("scan-status").innerText = "QRコードをかざしてください...";
 }
 
-function onScanSuccess(decodedText, decodedResult) {
-    if (scannedCodes.includes(decodedText)) return; // Avoid dupe
+function handleScannedText(text) {
+    if (scannedCodes.includes(text)) return;
+    scannedCodes.push(text);
 
-    scannedCodes.push(decodedText);
-    document.getElementById("scan-status").innerText = `${scannedCodes.length}個目のQRを読み取りました`;
+    // Show intermediate status
+    document.getElementById("parsed-data").innerText = `${scannedCodes.length}個目のQRを読み取りました`;
+    document.getElementById("scan-result").style.display = "block";
 
-    // Auto-stop after 2 scans (assumption for JRA)
-    if (scannedCodes.length >= 2) {
-        html5QrCode.stop().then(() => {
-            document.getElementById("reader").style.display = "none";
-            document.getElementById("scan-status").innerText = "読み取り完了！解析中...";
+    // JRA tickets have 2 codes. 
+    // If 1st scanned, ask for 2nd?
+    // Native scanner closes after 1 scan.
+    // We need to ask user to scan again if length < 2.
+
+    if (scannedCodes.length < 2) {
+        if (confirm("1つ目のQRを読み取りました。\n続けて2つ目をスキャンしますか？")) {
+            startNativeScan();
+        } else {
+            // User canceled 2nd scan, try processing anyway?
             processScannedData();
-        }).catch(err => console.error(err));
+        }
+    } else {
+        processScannedData();
     }
 }
 
@@ -124,18 +119,28 @@ async function processScannedData() {
         document.getElementById("scan-result").style.display = "block";
 
         // Setup Submit Button
-        document.getElementById("submit-scan-btn").onclick = function () {
-            registerBet(d);
-        };
+        // Remove existing button to avoid dupes
+        const oldBtn = document.getElementById("submit-scan-btn");
+        if (oldBtn) oldBtn.remove();
+
+        const btn = document.createElement("button");
+        btn.id = "submit-scan-btn";
+        btn.className = "btn btn-primary";
+        btn.innerText = "登録する";
+        btn.onclick = function () { registerBet(d); };
+        document.getElementById("scan-result").appendChild(btn);
 
     } catch (e) {
         console.error(e);
         document.getElementById("parsed-data").innerText = "エラー: " + e.message;
-        // Allow retry
+
         const retryBtn = document.createElement("button");
-        retryBtn.innerText = "再スキャン";
+        retryBtn.innerText = "最初からやり直す";
         retryBtn.className = "btn btn-secondary";
-        retryBtn.onclick = function () { location.reload(); };
+        retryBtn.onclick = function () {
+            scannedCodes = [];
+            location.reload();
+        };
         document.getElementById("parsed-data").appendChild(retryBtn);
     }
 }
@@ -150,8 +155,8 @@ async function registerBet(ticketItem) {
 
         if (!response.ok) throw new Error("登録エラー");
 
-        const res = await response.json();
         alert("登録しました！");
+        scannedCodes = [];
         location.reload();
 
     } catch (e) {
