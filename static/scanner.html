@@ -8,8 +8,25 @@
     <link rel="stylesheet" href="css/style.css">
     <!-- LIFF SDK -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <!-- HTML5-QRCode -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        .method-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            text-align: left;
+        }
+
+        .method-icon {
+            font-size: 24px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+    </style>
 </head>
 
 <body>
@@ -19,18 +36,33 @@
             <a href="balance.html" style="color:var(--primary-color); text-decoration:none;">📊 収支を見る &gt;</a>
         </div>
 
-        <!-- Scan View -->
-        <div id="scan-view">
-            <p style="font-size:14px; text-align:center;">LINEのカメラでQRコードを読み取ります</p>
-            <button id="start-native-scan-btn" class="btn btn-primary" style="font-size:18px;">📷 LINEでスキャンする</button>
-            <div id="scan-result" class="card" style="display:none;">
-                <h3>読み取り結果</h3>
-                <div id="parsed-data"></div>
-                <!-- <button id="submit-scan-btn" class="btn btn-primary">登録する</button> added dynamically -->
-            </div>
+        <div class="tabs">
+            <button class="tab-btn active" id="tab-scan">📷 スキャン</button>
+            <button class="tab-btn" id="tab-upload">📁 写真読込</button>
+            <button class="tab-btn" id="tab-manual">✍️ 手入力</button>
+        </div>
 
-            <div style="margin-top:20px; text-align:center;">
-                <button id="tab-manual" class="btn btn-secondary">✍️ 手入力はこちら</button>
+        <!-- Native Scan View -->
+        <div id="scan-view">
+            <div class="card" style="text-align:center; padding:30px;">
+                <p>LINEのカメラでQRコードを読み取ります。<br><small>※小さいQRは読み取りにくい場合があります</small></p>
+                <button id="start-native-scan-btn" class="btn btn-primary" style="font-size:18px; padding:15px 30px;">
+                    📷 カメラ起動
+                </button>
+            </div>
+        </div>
+
+        <!-- Photo Upload View -->
+        <div id="upload-view" style="display:none;">
+            <div class="card" style="text-align:center; padding:30px;">
+                <p><strong>推奨：小さいQRコードの場合</strong></p>
+                <p style="font-size:12px; color:#666; margin-bottom:20px;">
+                    スマホの純正カメラで近くまで寄って撮影した<br>鮮明な写真を選択してください。
+                </p>
+                <input type="file" id="file-input" accept="image/*" style="display:none;">
+                <button id="select-file-btn" class="btn btn-primary" style="font-size:18px; padding:15px 30px;">
+                    📁 写真を選択 / 撮影
+                </button>
             </div>
         </div>
 
@@ -78,7 +110,15 @@
             </div>
         </div>
 
-        <div id="log" style="color:red; font-size:12px;"></div>
+        <!-- Result View (Common) -->
+        <div id="scan-result" class="card"
+            style="display:none; margin-top:20px; border:2px solid var(--primary-color);">
+            <h3 style="color:var(--primary-color);">読み取り結果</h3>
+            <div id="parsed-data" style="margin:15px 0;"></div>
+            <!-- <button id="submit-scan-btn" ...> -->
+        </div>
+
+        <div id="log" style="color:red; font-size:12px; margin-top:10px;"></div>
     </div>
 
     <script src="js/scanner.js"></script>

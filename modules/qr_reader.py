@@ -137,16 +137,57 @@ class QRReader:
             if pil_img.mode not in ('RGB', 'L'):
                 pil_img = pil_img.convert('RGB')
             
+            # --- MULTI-PASS DETECTION ---
+            # Try multiple image processings to catch difficult QRs
+            
+            image_variants = [("Original", pil_img)]
+            
+            # Variant 2: Grayscale (L)
+            if pil_img.mode != 'L':
+                image_variants.append(("Grayscale", pil_img.convert('L')))
+            
+            # Variant 3: OpenCV Adaptive Threshold (if available)
+            try:
+                import cv2
+                # Convert PIL to OpenCv
+                open_cv_image = np.array(pil_img.convert('RGB')) 
+                # RGB to BGR
+                open_cv_image = open_cv_image[:, :, ::-1].copy()
+                
+                # Gray
+                gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
+                
+                # Adaptive Threshold
+                thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                             cv2.THRESH_BINARY, 11, 2)
+                
+                # Convert back to PIL
+                thresh_pil = Image.fromarray(thresh)
+                image_variants.append(("Threshold", thresh_pil))
+                
+                # Variant 4: Sharpening? (Optional, maybe later)
+                
+            except ImportError:
+                print("DEBUG: OpenCV not available, skipping advanced preprocessing")
+            except Exception as e:
+                print(f"DEBUG: OpenCV preprocessing failed: {e}")
+
+            decoded_objects = []
+            
             if zxingcpp:
-                # zxing-cpp can read PIL images directly or numpy arrays
-                decoded_objects = zxingcpp.read_barcodes(pil_img)
-                print(f"DEBUG: zxingcpp returned {len(decoded_objects)} objects")
+                for name, img in image_variants:
+                    print(f"DEBUG: Trying decoding with {name}...")
+                    objs = zxingcpp.read_barcodes(img)
+                    if objs:
+                        print(f"DEBUG: Success with {name}! Found {len(objs)} objects.")
+                        decoded_objects = objs
+                        break # Stop if found
             else:
                 print("DEBUG: zxingcpp missing")
                 return []
 
             if not decoded_objects:
-                print("DEBUG: No QR codes found in image.")
+                print("DEBUG: No QR codes found in any variant.")
                 return []
 
             # 1. Extract data and bounding boxes
