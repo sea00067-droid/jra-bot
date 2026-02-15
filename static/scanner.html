@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JRA Ticket Scanner</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <!-- HTML5-QRCode -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>馬券登録</h1>
+        <div style="text-align:right; margin-bottom:10px;">
+            <a href="balance.html" style="color:var(--primary-color); text-decoration:none;">📊 収支を見る &gt;</a>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" id="tab-scan">📷 スキャン</button>
+            <button class="tab-btn" id="tab-manual">✍️ 手入力</button>
+        </div>
+
+        <!-- Scanner View -->
+        <div id="scan-view">
+            <div id="reader" width="600px"></div>
+            <p id="scan-status">カメラを起動してください...</p>
+            <button id="start-scan-btn" class="btn btn-primary">カメラ起動</button>
+            <div id="scan-result" class="card" style="display:none;">
+                <h3>読み取り結果</h3>
+                <div id="parsed-data"></div>
+                <button id="submit-scan-btn" class="btn btn-primary">登録する</button>
+            </div>
+        </div>
+
+        <!-- Manual Entry View -->
+        <div id="manual-view" style="display:none;">
+            <div class="card">
+                <h3>手入力フォーム</h3>
+                <label>開催場所</label>
+                <select id="place">
+                    <option value="05">東京</option>
+                    <option value="06">中山</option>
+                    <option value="08">京都</option>
+                    <option value="09">阪神</option>
+                    <option value="01">札幌</option>
+                    <option value="02">函館</option>
+                    <option value="03">福島</option>
+                    <option value="04">新潟</option>
+                    <option value="07">中京</option>
+                    <option value="10">小倉</option>
+                </select>
+
+                <label>レース番号</label>
+                <select id="race-num">
+                    <!-- JS fills 1-12 -->
+                </select>
+
+                <label>式別</label>
+                <select id="bet-type">
+                    <option value="単勝">単勝</option>
+                    <option value="複勝">複勝</option>
+                    <option value="ワイド">ワイド</option>
+                    <option value="馬連">馬連</option>
+                    <option value="馬単">馬単</option>
+                    <option value="3連複">3連複</option>
+                    <option value="3連単">3連単</option>
+                </select>
+
+                <label>買い目 (例: 1-2-3)</label>
+                <input type="text" id="buy-details" placeholder="1-2-3">
+
+                <label>金額 (円)</label>
+                <input type="number" id="amount" placeholder="100">
+
+                <button id="add-manual-btn" class="btn btn-primary">追加する</button>
+            </div>
+        </div>
+
+        <div id="log" style="color:red; font-size:12px;"></div>
+    </div>
+
+    <script src="js/scanner.js"></script>
+</body>
+
+</html>
